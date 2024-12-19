@@ -36,7 +36,11 @@ inline void checkLastCudaError() {
 
 float** kMeansClustering(float**, int, int, int, float, int*, int*);
 float** omp_kmeans(float**, int, int, int, float, int*);
+float** seq_kmeans(float**, int, int, int, float, int*, int*);
 
 
 float** file_read(char*, int*, int* );
 void file_write(char*, int, int, int, float**, int*);
+
+float** generatePoints(int numPoints, int numDimensions, float rangeMin = -1500.0, float rangeMax = 1500.0);
+void freePoints(float** points, int numDimension);

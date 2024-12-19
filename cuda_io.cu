@@ -58,3 +58,26 @@ void file_write(char* fileName, int numClusters, int numPoints, int numDimension
 	outFile << std::endl;
 	outFile.close();
 }
+
+float** generatePoints(int numPoints, int numDimensions, float rangeMin, float rangeMax) {
+	float** points = (float**)malloc(sizeof(float*) * numDimensions);
+	assert(points != NULL);
+	std::srand(std::time(0));
+
+	for (int i = 0; i < numDimensions; i++) {
+		points[i] = (float*)malloc(sizeof(float) * numPoints);
+		assert(points[i] != NULL);
+		for (int j = 0; j < numPoints; j++) {
+			points[i][j] = rangeMin + static_cast<float>(std::rand()) / RAND_MAX * (rangeMax - rangeMin);
+		}
+	}
+
+	return points;
+}
+
+void freePoints(float** points, int numDimension) {
+	for (int i = 0; i < numDimension; i++) {
+		free(points[i]);
+	}
+	free(points);
+}

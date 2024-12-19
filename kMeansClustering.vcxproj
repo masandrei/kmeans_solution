@@ -83,10 +83,13 @@
     <CudaCompile Include="omp_kmeans.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <Text Include="text.txt" />
+    <ClInclude Include="kMeans.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="kMeans.h" />
+    <Text Include="..\..\..\..\PycharmProjects\GenerateDataset\text.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="seq_kmeans.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

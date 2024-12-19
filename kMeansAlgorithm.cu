@@ -17,17 +17,19 @@ static inline int nextPowerOfTwo(int n) {
 
 __host__ __device__ inline static
 float euclid_dist_2(int numDimension,
-	int numCluster,
 	int numPoints,
+	int numCluster,
 	float* data,
 	float* clusters,
 	int pointId,
 	int clusterId)
 {
-	float ans = 0;
+	float ans = 0.0;
+	float temp;
 	for (int i = 0; i < numDimension; i++)
 	{
-		ans += (data[i * numPoints + pointId] - clusters[i * numCluster + clusterId]) * (data[i * numPoints + pointId] - clusters[i * numCluster + clusterId]);
+		temp = (data[i * numPoints + pointId] - clusters[i * numCluster + clusterId]) * (data[i * numPoints + pointId] - clusters[i * numCluster + clusterId]);
+		ans += temp;
 	}
 	return ans;
 }
@@ -41,6 +43,7 @@ void find_nearest_cluster(int numDimension,
 	int* membership,
 	int* intermediates)
 {
+
 	extern __shared__ char sharedMemory[];
 	unsigned char* membership_changed = (unsigned char*)sharedMemory;
 	float* clusters = deviceClusters;
@@ -54,18 +57,19 @@ void find_nearest_cluster(int numDimension,
 		float dist, minDist;
 		
 		int clusterIdx = 0;
-		minDist = euclid_dist_2(numDimension, numCluster, numPoint ,points, deviceClusters, pointId, 0);
+		minDist = euclid_dist_2(numDimension, numPoint, numCluster, points, deviceClusters, pointId, 0);
 		for (int i = 1; i < numCluster; i++)
 		{
-			dist = euclid_dist_2(numDimension, numCluster, numPoint, points, deviceClusters, pointId, i);
+			dist = euclid_dist_2(numDimension, numPoint, numCluster, points, deviceClusters, pointId, i);
 			if (dist < minDist)
 			{
 				clusterIdx = i;
 				minDist = dist;
+				
 			}
 		}
 
-		if (membership[threadIdx.x] != clusterIdx)
+		if (membership[pointId] != clusterIdx)
 		{
 			membership_changed[threadIdx.x] = 1;
 		}
@@ -135,9 +139,9 @@ float** kMeansClustering(float** points,
 	int      i, j, index, loop = 0;
 	int* newClusterSize;
 	float    delta;          /* % of points change their clusters */
-	float** dimPoints;
+	float* dimPoints;
 	float** clusters;
-	float** dimClusters;
+	float* dimClusters;
 	float** newClusters;
 
 	float* devicePoints;
@@ -145,11 +149,27 @@ float** kMeansClustering(float** points,
 	int* deviceMembership;
 	int* deviceIntermediates;
 
-	malloc2D(dimPoints, numDimensions, numPoints, float);
-	matrixCopy(points, dimPoints, numDimensions, numPoints);
+	/*malloc2D(dimPoints, numDimensions, numPoints, float);
+	matrixCopy(points, dimPoints, numDimensions, numPoints);*/
+	dimPoints = (float*)malloc(numDimensions * numPoints * sizeof(float));
+	for (int i = 0; i < numDimensions; i++)
+	{
+		for (int j = 0; j < numPoints; j++)
+		{
+			dimPoints[i * numPoints + j] = points[i][j];
+		}
+	}
 
-	malloc2D(dimClusters, numDimensions, numClusters, float);
-	matrixCopy(dimPoints, dimClusters, numDimensions, numClusters);
+	dimClusters = (float*)malloc(numDimensions * numPoints * sizeof(float));
+	for (int i = 0; i < numDimensions; i++)
+	{
+		for (int j = 0; j < numClusters; j++)
+		{
+			dimClusters[i * numClusters + j] = points[i][j];
+		}
+	}
+
+
 
 	for (int i = 0; i < numPoints; i++)
 	{
@@ -161,6 +181,7 @@ float** kMeansClustering(float** points,
 
 	malloc2D(newClusters, numDimensions, numClusters, float);
 	memset(newClusters[0], 0, numClusters * numDimensions * sizeof(float));
+
 
 	const unsigned int numThreadsPerClusterBlock = 128;
 	const unsigned int numClusterBlocks = (numPoints + numThreadsPerClusterBlock - 1) / numThreadsPerClusterBlock;
@@ -175,19 +196,19 @@ float** kMeansClustering(float** points,
 	cudaMalloc(&deviceMembership, numPoints * sizeof(int));
 	cudaMalloc(&deviceIntermediates, numReductionThreads * sizeof(unsigned int));
 
-	cudaMemcpy(devicePoints, dimPoints[0], numPoints * numDimensions * sizeof(float), cudaMemcpyHostToDevice);
+	checkCuda(cudaMemcpy(devicePoints, dimPoints, numPoints * numDimensions * sizeof(float), cudaMemcpyHostToDevice));
 	checkCuda(cudaMemcpy(deviceMembership, membership, numPoints * sizeof(int), cudaMemcpyHostToDevice));
 
 	do {
-		checkCuda(cudaMemcpy(deviceClusters, dimClusters[0], numClusters * numDimensions * sizeof(float), cudaMemcpyHostToDevice));
+		checkCuda(cudaMemcpy(deviceClusters, dimClusters, numClusters * numDimensions * sizeof(float), cudaMemcpyHostToDevice));
 
 		find_nearest_cluster <<<numClusterBlocks, numThreadsPerClusterBlock, clusterBlockSharedDataSize >>> (numDimensions, numPoints, numClusters, devicePoints, deviceClusters, deviceMembership, deviceIntermediates);
 
 		cudaDeviceSynchronize();
 		checkLastCudaError();
 
-		compute_delta <<< 1, numReductionThreads, reductionBlockSharedDataSize >> >
-			(deviceIntermediates, numClusterBlocks, numReductionThreads);
+		
+		compute_delta <<< 1, numReductionThreads, reductionBlockSharedDataSize >>>(deviceIntermediates, numClusterBlocks, numReductionThreads);
 
 		cudaDeviceSynchronize(); 
 		checkLastCudaError();
@@ -204,14 +225,15 @@ float** kMeansClustering(float** points,
 			newClusterSize[index]++;
 			for (j = 0; j < numDimensions; j++)
 			{
-				newClusters[j][index] += points[j][i];
+				float temp = points[j][i];
+				newClusters[j][index] += temp;
 			}
 		}
 		for (i = 0; i < numClusters; i++) {
 			for (j = 0; j < numDimensions; j++) {
 				if (newClusterSize[i] > 0)
 				{
-					dimClusters[j][i] = newClusters[j][i] / newClusterSize[i];
+					dimClusters[j * numClusters + i] = newClusters[j][i] / newClusterSize[i];
 				}
 				newClusters[j][i] = 0.0;
 			}
@@ -224,18 +246,21 @@ float** kMeansClustering(float** points,
 	*iterations = loop + 1;
 
 	malloc2D(clusters, numDimensions, numClusters, float);
-	matrixCopy(dimClusters, clusters, numDimensions, numClusters);
+	for (int i = 0; i < numDimensions; i++)
+	{
+		for (int j = 0; j < numClusters; j++)
+		{
+			clusters[i][j] = dimClusters[i * numClusters + j];
+		}
+	}
 
 	checkCuda(cudaFree(devicePoints));
 	checkCuda(cudaFree(deviceClusters));
 	checkCuda(cudaFree(deviceMembership));
 	checkCuda(cudaFree(deviceIntermediates));
 
-	free(dimPoints[0]);
 	free(dimPoints);
-	free(dimClusters[0]);
 	free(dimClusters);
-	//free(newClusters[0]);
 	free(newClusters);
 	free(newClusterSize);
 
